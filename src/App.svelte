@@ -1,6 +1,7 @@
 <script>
   import {
     Button,
+    Badge,
     Label,
     Toggle,
     Input,
@@ -20,12 +21,12 @@
   const urlParams = new URLSearchParams(window.location.search);
   // if plug_env is 1 them show config panel
   const plug_env = urlParams.get("plug_env") || "1";
-  /** @type {{options: {mark: string, name: string, cnt: number}[], user_code: string, time: number, graph_type: number}}*/
-  const config = {
+  /** @type {{options: {mark: string, name: string, cnt: number}[], user_code: string, time: number}}*/
+  let config = {
     options: [],
     user_code: "",
     time: 30,
-    graph_type: 0,
+    percent: true,
   };
 
   config.user_code = urlParams.get("user_code") || "";
@@ -40,7 +41,7 @@
     };
   });
   config.time = parseInt(urlParams.get("time") || "30") || 30;
-  config.graph_type = parseInt(urlParams.get("graph_type") || "0") || 0;
+  config.percent = urlParams.get("percent") === "true";
 
   console.log(config);
 
@@ -52,10 +53,12 @@
     link = link.split("?")[0];
     link += `?user_code=${config.user_code}`;
     config.options.forEach((opt) => {
-      link += `&mark[]=${opt.mark}`;
-      link += `&opt[]=${opt.name}`;
+      // mark and opt should be url encoded
+      link += `&mark[]=${encodeURIComponent(opt.mark)}`;
+      link += `&opt[]=${encodeURIComponent(opt.name)}`;
     });
     link += `&time=${config.time}`;
+    link += `&percent=${config.percent}`;
     link += `&plug_env=0`;
     navigator.clipboard.writeText(link).then(
       () => {
@@ -73,7 +76,7 @@
   // already voted
   const voted = new Set();
   let total_vote = 0;
-  let winner_mark = "A";
+  let winner_cnt = 0;
   /**
    * @param {any} msg
    */
@@ -85,7 +88,7 @@
       if (voted.has(msg.data.open_id)) {
         return;
       }
-      const opt = msg.data.msg[0];
+      const opt = msg.data.msg;
       vote(msg.data.open_id, opt);
     }
   };
@@ -94,12 +97,18 @@
     g = new Game(config.user_code, handler);
     g.startGame();
   } else {
-    // load options from local db
-    let localOptions = localStorage.getItem("options");
-    if (localOptions) {
+    // load config from local db
+    let localConfig = JSON.parse(localStorage.getItem("config"));
+    if (localConfig) {
+      console.log("load config from local");
+      config = localConfig;
+    } else {
+      localConfig = config;
+    }
+    if (localConfig && localConfig.options.length > 0) {
       console.log("load options from local");
       // doesn't need to use old cnt
-      config.options = JSON.parse(localOptions).map(
+      config.options = localConfig.options.map(
         (/** @type {{ mark: any; name: any; }} */ opt) => {
           return {
             mark: opt.mark,
@@ -127,6 +136,7 @@
         },
       ];
     }
+
     // random vote for demo
     const random_vote = () => {
       if (config.options.length === 0) {
@@ -220,38 +230,48 @@
         voted.add(id);
         config.options[i].cnt += 1;
         total_vote++;
-        // update winner
-        winner_mark = config.options.reduce((prev, curr) =>
+        // update winner to max option's cnt
+        winner_cnt = config.options.reduce((prev, curr) =>
           prev.cnt > curr.cnt ? prev : curr
-        ).mark;
+        ).cnt;
         break;
       }
     }
     config.options = [...config.options];
   }
 
+  function configChange() {
+    localStorage.setItem("config", JSON.stringify(config));
+  }
+
   function optionChange() {
-    localStorage.setItem("options", JSON.stringify(config.options));
+    configChange();
+    winner_cnt = config.options.reduce((prev, curr) =>
+      prev.cnt > curr.cnt ? prev : curr
+    ).cnt;
+    total_vote = config.options.reduce((prev, curr) => prev + curr.cnt, 0);
     config.options = [...config.options];
+  }
+
+  function cssChange() {
+    localStorage.setItem("style_config", JSON.stringify(style_config));
   }
 
   // render css
   function copyCss() {
-    // save style config to local
-    localStorage.setItem("style_config", JSON.stringify(style_config));
     const css = `
-    body {
-      --opacity: ${style_config.opacity}!important;
-      --font-size: ${style_config.font_size}px!important;
-      --font-family: ${style_config.font_family}!important;
-      --text-color: ${style_config.text_color}!important;
-      --main-color: ${style_config.main_color}!important;
-      --bg-color: ${style_config.bg_color}!important;
-      --text-stroke-color: ${style_config.text_stroke_color}!important;
-      background-color: rgba(0, 0, 0, 0);
-      margin: 0px auto;
-      overflow: hidden;
-    }
+main {
+  --opacity: ${style_config.opacity}!important;
+  --font-size: ${style_config.font_size}px!important;
+  --font-family: ${style_config.font_family}!important;
+  --text-color: ${style_config.text_color}!important;
+  --main-color: ${style_config.main_color}!important;
+  --bg-color: ${style_config.bg_color}!important;
+  --text-stroke-color: ${style_config.text_stroke_color}!important;
+  background-color: rgba(0, 0, 0, 0);
+  margin: 0px auto;
+  overflow: hidden;
+}
     `;
     navigator.clipboard.writeText(css).then(
       () => {
@@ -285,23 +305,26 @@
 
     <!-- show options as visualized vote result -->
     {#each config.options as opt}
-      <div class="option" class:winner={opt.mark == winner_mark}>
+      <div class="option" class:winner={opt.cnt == winner_cnt}>
         <span
           class="option-bar"
           style={"right: " + ((total_vote - opt.cnt) / total_vote) * 100 + "%"}
         ></span>
-        <span class="option-mark">{opt.mark}</span>
+        <span class="option-mark font-medium inline-flex items-center justify-center rounded border px-2.5 py-0.5">{opt.mark}</span>
         <span class="option-text">{opt.name}</span>
+        {#if config.percent}
         <span class="option-cnt"
-          >{opt.cnt} ({total_vote > 0
+        >{opt.cnt} ({total_vote > 0
             ? ((opt.cnt / total_vote) * 100).toFixed(2) + "%"
-            : "0%"})</span
-        >
+            : "0%"})</span>
+        {:else}
+        <span class="option-cnt">{opt.cnt}</span>
+        {/if}
       </div>
     {/each}
   </div>
   {#if plug_env === "1"}
-    <Card>
+    <Card class="ml-8">
       <div class="mb-6">
         *前往<A href="https://play-live.bilibili.com/" target="_blank"
           >互动玩法</A
@@ -313,13 +336,23 @@
           type="text"
           size="sm"
           bind:value={config.user_code}
+          on:change={configChange}
           id="user_code"
         />
       </div>
       <div class="mb-6">
         <Label for="counter" class="mb-2">计票时长</Label>
-        <Input type="number" bind:value={config.time} size="sm" id="counter" />
+        <Input type="number" bind:value={config.time} on:change={configChange} size="sm" id="counter" />
       </div>
+      <div class="mb-6">
+        <Label for="percent" class="mb-2">显示投票百分比</Label>
+        <Toggle
+          bind:checked={config.percent}
+          on:change={configChange}
+          color="red"
+          size="small"
+          class="mb-6"
+        />
       <div>
         <Button
           color="alternative"
@@ -384,6 +417,7 @@
         <Label for="opacity" class="mb-2">透明度</Label>
         <Range
           bind:value={style_config.opacity}
+          on:change={cssChange}
           min="0"
           max="1"
           step="0.01"
@@ -396,6 +430,7 @@
           <Label for="font_family" class="mb-2">字体</Label>
           <Select
             bind:value={style_config.font_family}
+            on:change={cssChange}
             items={localFonts}
             class="mb-2"
             style="width: 170px"
@@ -415,6 +450,7 @@
           <Input
             type="number"
             bind:value={style_config.font_size}
+            on:change={cssChange}
             size="sm"
             id="font_size"
           />
@@ -422,6 +458,7 @@
       </div>
       <Toggle
         bind:checked={style_config.text_stroke_enabled}
+        on:change={cssChange}
         color="red"
         size="small"
         class="mb-6">描边效果</Toggle
@@ -432,6 +469,7 @@
           <input
             type="color"
             bind:value={style_config.text_color}
+            on:change={cssChange}
             id="text_color"
           />
         </div>
@@ -440,6 +478,7 @@
           <input
             type="color"
             bind:value={style_config.text_stroke_color}
+            on:change={cssChange}
             id="text_stroke_color"
           />
         </div>
@@ -447,11 +486,11 @@
       <div class="flex mb-6">
         <div>
           <Label>选项主色</Label>
-          <input type="color" bind:value={style_config.main_color} />
+          <input type="color" bind:value={style_config.main_color} on:change={cssChange} />
         </div>
         <div class="ml-10">
           <Label>背景色</Label>
-          <input type="color" bind:value={style_config.bg_color} />
+          <input type="color" bind:value={style_config.bg_color} on:change={cssChange} />
         </div>
       </div>
       <ButtonGroup>
@@ -491,15 +530,6 @@
       var(--text-stroke-color, white) -1px 0 0;
   }
 
-  .panel {
-    max-width: 30%;
-    border: 1px dotted gray;
-    border-radius: 6px;
-    margin: 20px;
-    padding: 20px;
-    font-size: small;
-  }
-
   .option {
     margin: 10px 10px 10px 10px;
     padding: 10px 10px 10px 10px;
@@ -532,6 +562,9 @@
 
   .option-mark {
     margin-right: 20px;
+    color: var(--main-color, #fc3171)!important;
+    border-color: var(--main-color, #fc3171)!important;
+    background-color: var(--bg-color, #fc3171)!important;
   }
 
   .count-down {
@@ -544,10 +577,6 @@
     scale: 1.02;
     border: 1px solid white;
     box-shadow: 0 0 5px 2px var(--main-color, #fc3171);
-  }
-
-  hr.dashed {
-    border-top: 2px dashed #bbb;
   }
 
   input[type="color"] {
