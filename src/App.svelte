@@ -267,7 +267,7 @@ main {
   --text-color: ${style_config.text_color}!important;
   --main-color: ${style_config.main_color}!important;
   --bg-color: ${style_config.bg_color}!important;
-  --text-stroke-color: ${style_config.text_stroke_color}!important;
+  --text-stroke-color: ${style_config.text_stroke_enabled ? style_config.text_stroke_color : "#0000"}!important;
   background-color: rgba(0, 0, 0, 0);
   margin: 0px auto;
   overflow: hidden;
