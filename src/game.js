@@ -42,6 +42,7 @@ class Game {
               this.destroySocket();
             },
           };
+          // @ts-ignore
           this.ws = new DanmakuWebSocket(opt);
           this.game_id = game_info.game_id;
         }
