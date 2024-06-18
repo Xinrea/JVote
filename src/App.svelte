@@ -22,20 +22,48 @@
   const urlParams = new URLSearchParams(window.location.search);
   // if plug_env is 1 them show config panel
   const plug_env = urlParams.get("plug_env") || "1";
-  /** @type {{options: {mark: string, name: string, cnt: number}[], user_code: string, time: number, percent: boolean}}*/
+  /** @type {{options: {mark: string, name: string, cnt: number}[], user_code: string, time: number, percent: boolean, caller: string, mid: string, timestamp: string, code_sign: string, magic: boolean}}*/
   let config = {
     options: [],
     user_code: "",
     time: 30,
     percent: true,
+    caller: "",
+    mid: "",
+    timestamp: "",
+    code_sign: "",
+    magic: false,
   };
 
-  config.user_code = urlParams.get("user_code") || "";
-  if (config.user_code === "") {
-    config.user_code = urlParams.get("Code") || "";
+  config.user_code = urlParams.get("Code") || "";
+  config.caller = urlParams.get("Caller") || "";
+  config.mid = urlParams.get("Mid") || "";
+  config.timestamp = urlParams.get("Timestamp") || "";
+  config.code_sign = urlParams.get("CodeSign") || "";
+  config.magic = urlParams.get("magic") === "true";
+
+  let valid = false;
+
+  if (config.magic) {
+    valid = true;
+  } else {
+    // verify this is a valid link
+    Game.verify(
+      config.caller,
+      config.user_code,
+      config.mid,
+      config.timestamp,
+      config.code_sign,
+      (code) => {
+        if (code !== 0) {
+          console.log("invalid link");
+        } else {
+          valid = true;
+        }
+      }
+    );
   }
 
-  let show_prompt = config.user_code === "";
   // get marks from url params mark[]
   const marks = urlParams.getAll("mark[]");
   // get options from url params opt[]
@@ -55,7 +83,7 @@
     let link = window.location.href;
     // remove params
     link = link.split("?")[0];
-    link += `?user_code=${config.user_code}`;
+    link += `?Code=${config.user_code}`;
     config.options.forEach((opt) => {
       // mark and opt should be url encoded
       link += `&mark[]=${encodeURIComponent(opt.mark)}`;
@@ -63,10 +91,16 @@
     });
     link += `&time=${config.time}`;
     link += `&percent=${config.percent}`;
+    // add Code, Caller, Mid, Timestamp, CodeSign
+    link += `&Caller=${config.caller}`;
+    link += `&Mid=${config.mid}`;
+    link += `&Timestamp=${config.timestamp}`;
+    link += `&CodeSign=${config.code_sign}`;
     link += `&plug_env=0`;
 
     copy_text = link;
     setTimeout(() => {
+      // @ts-ignore
       document.getElementById("copy_fake").select();
       document.execCommand("Copy");
     }, 500);
@@ -123,7 +157,8 @@
     let localConfig = JSON.parse(localStorage.getItem("config"));
     if (localConfig) {
       console.log("load config from local");
-      config = localConfig;
+      config.percent = localConfig.percent;
+      config.time = localConfig.time;
     } else {
       localConfig = config;
     }
@@ -299,6 +334,7 @@
     `;
     copy_text = css;
     setTimeout(() => {
+      // @ts-ignore
       document.getElementById("copy_fake").select();
       document.execCommand("Copy");
     }, 500);
@@ -317,241 +353,262 @@
   style:--bg-color={style_config.bg_color}
   style:--text-stroke-color={style_config.text_stroke_color}
 >
-  <div class="main" class:stroke={style_config.text_stroke_enabled}>
-    <!-- count down with progressbar -->
-    {#if count_down > 0}
-      <span class="count-down">剩余时间: {count_down}</span>
-    {:else}
-      <span class="count-down">投票已结束</span>
-    {/if}
-
-    <!-- show options as visualized vote result -->
-    {#each config.options as opt}
-      <div class="option" class:winner={opt.cnt == winner_cnt}>
-        <span
-          class="option-bar"
-          style={"right: " + ((total_vote - opt.cnt) / total_vote) * 100 + "%"}
-        ></span>
-        <span
-          class="option-mark font-medium inline-flex items-center justify-center rounded border px-2.5 py-0.5"
-          >{opt.mark}</span
-        >
-        <span class="option-text">{opt.name}</span>
-        {#if config.percent}
-          <span class="option-cnt"
-            >{opt.cnt} ({total_vote > 0
-              ? ((opt.cnt / total_vote) * 100).toFixed(2) + "%"
-              : "0%"})</span
-          >
-        {:else}
-          <span class="option-cnt">{opt.cnt}</span>
-        {/if}
-      </div>
-    {/each}
-  </div>
-  {#if plug_env === "1"}
-    <Card class="ml-8 panel">
-      {#if show_prompt}
-        <div class="mb-6" class:panel={0}>
-          *前往<A href="https://play-live.bilibili.com/" target="_blank"
-            >互动玩法</A
-          >页面右下角获取身份码
-        </div>
+  {#if valid}
+    <div class="main" class:stroke={style_config.text_stroke_enabled}>
+      <!-- count down with progressbar -->
+      {#if count_down > 0}
+        <span class="count-down">剩余时间: {count_down}</span>
+      {:else}
+        <span class="count-down">投票已结束</span>
       {/if}
-      <div class="mb-6">
-        <Label for="user_code" class="mb-2">身份码</Label>
-        <Input
-          type="text"
-          size="sm"
-          bind:value={config.user_code}
-          on:change={configChange}
-          id="user_code"
-        />
-      </div>
-      <div class="mb-6">
-        <Label for="counter" class="mb-2">计票时长</Label>
-        <Input
-          type="number"
-          bind:value={config.time}
-          on:change={configChange}
-          size="sm"
-          id="counter"
-        />
-      </div>
-      <div class="mb-6">
-        <Label for="percent" class="mb-2">显示投票百分比</Label>
-        <Toggle
-          bind:checked={config.percent}
-          on:change={configChange}
-          color="red"
-          size="small"
-          class="mb-6"
-        />
-        <div>
-          <Button
-            color="alternative"
-            size="sm"
-            on:click={() => {
-              option_modal = true;
-            }}>投票选项编辑</Button
+
+      <!-- show options as visualized vote result -->
+      {#each config.options as opt}
+        <div class="option" class:winner={opt.cnt == winner_cnt}>
+          <span
+            class="option-bar"
+            style={"right: " +
+              ((total_vote - opt.cnt) / total_vote) * 100 +
+              "%"}
+          ></span>
+          <span
+            class="option-mark font-medium inline-flex items-center justify-center rounded border px-2.5 py-0.5"
+            >{opt.mark}</span
           >
-          <Modal title="投票选项编辑" bind:open={option_modal}>
-            <Alert color="yellow"
-              >请注意，如果弹幕能够触发多个选项，则实际只会触发顺序靠前的第一个选项。</Alert
+          <span class="option-text">{opt.name}</span>
+          {#if config.percent}
+            <span class="option-cnt"
+              >{opt.cnt} ({total_vote > 0
+                ? ((opt.cnt / total_vote) * 100).toFixed(2) + "%"
+                : "0%"})</span
             >
-            <Accordion>
-              {#each config.options as opt, index}
-                <AccordionItem>
-                  <span slot="header">{"[" + opt.mark + "]" + opt.name}</span>
-                  <div>
-                    <Label for="option_mark" class="mb-2">选项标记</Label>
-                    <Input
-                      type="text"
-                      bind:value={config.options[index].mark}
-                      size="sm"
-                      id="option_mark"
-                      class="mb-2"
-                    />
-                    <Label for="option_name" class="mb-2">选项内容</Label>
-                    <Input
-                      type="text"
-                      bind:value={config.options[index].name}
-                      size="sm"
-                      id="option_name"
-                    />
-                    <Button
-                      color="red"
-                      size="sm"
-                      class="mt-2"
-                      on:click={() => {
-                        if (config.options.length <= 1) {
-                          config.options = [];
-                        } else {
-                          config.options.splice(index, 1);
-                        }
-                        optionChange();
-                      }}>删除</Button
-                    >
-                  </div>
-                </AccordionItem>
-              {/each}
-            </Accordion>
-            <Button
-              color="primary"
-              size="sm"
-              on:click={() => {
-                config.options.push({
-                  mark: String.fromCharCode(65 + config.options.length),
-                  name: "",
-                  cnt: 0,
-                });
-                optionChange();
-              }}>添加选项</Button
-            >
-          </Modal>
+          {:else}
+            <span class="option-cnt">{opt.cnt}</span>
+          {/if}
         </div>
-        <Hr class="my-6" />
+      {/each}
+    </div>
+    {#if plug_env === "1"}
+      <Card class="ml-8 panel">
+        {#if config.magic}
+          <div class="mb-6" class:panel={0}>
+            *前往<A href="https://play-live.bilibili.com/" target="_blank"
+              >互动玩法</A
+            >页面右下角获取身份码
+          </div>
+          <div class="mb-6">
+            <Label for="user_code" class="mb-2">身份码</Label>
+            <Input
+              type="text"
+              size="sm"
+              bind:value={config.user_code}
+              on:change={configChange}
+              id="user_code"
+            />
+          </div>
+        {/if}
         <div class="mb-6">
-          <Label for="opacity" class="mb-2">透明度</Label>
-          <Range
-            bind:value={style_config.opacity}
-            on:change={cssChange}
-            min="0"
-            max="1"
-            step="0.01"
+          <Label for="counter" class="mb-2">计票时长</Label>
+          <Input
+            type="number"
+            bind:value={config.time}
+            on:change={configChange}
             size="sm"
-            id="opacity"
+            id="counter"
           />
         </div>
         <div class="mb-6">
-          {#if fontQuery}
-            <Label for="font_family" class="mb-2">字体</Label>
-            <Select
-              bind:value={style_config.font_family}
-              on:change={cssChange}
-              items={localFonts}
-              class="mb-2"
-              style="width: 170px"
+          <Label for="percent" class="mb-2">显示投票百分比</Label>
+          <Toggle
+            bind:checked={config.percent}
+            on:change={configChange}
+            color="red"
+            size="small"
+            class="mb-6"
+          />
+          <div>
+            <Button
+              color="alternative"
               size="sm"
-              id="font_family"
-            />
-            <Button color="alternative" on:click={getFontList} size="sm"
-              >获取字体列表</Button
+              on:click={() => {
+                option_modal = true;
+              }}>投票选项编辑</Button
             >
-          {:else}
-            <label>字体 <br /> <input /></label>
-          {/if}
-        </div>
-        <div class="mb-6">
-          <Label class="mb-2" for="font_size">文字大小</Label>
-          <div class="flex items-center">
-            <Input
-              type="number"
-              bind:value={style_config.font_size}
+            <Modal title="投票选项编辑" bind:open={option_modal}>
+              <Alert color="yellow"
+                >请注意，如果弹幕能够触发多个选项，则实际只会触发顺序靠前的第一个选项。</Alert
+              >
+              <Accordion>
+                {#each config.options as opt, index}
+                  <AccordionItem>
+                    <span slot="header">{"[" + opt.mark + "]" + opt.name}</span>
+                    <div>
+                      <Label for="option_mark" class="mb-2">选项标记</Label>
+                      <Input
+                        type="text"
+                        bind:value={config.options[index].mark}
+                        size="sm"
+                        id="option_mark"
+                        class="mb-2"
+                      />
+                      <Label for="option_name" class="mb-2">选项内容</Label>
+                      <Input
+                        type="text"
+                        bind:value={config.options[index].name}
+                        size="sm"
+                        id="option_name"
+                      />
+                      <Button
+                        color="red"
+                        size="sm"
+                        class="mt-2"
+                        on:click={() => {
+                          if (config.options.length <= 1) {
+                            config.options = [];
+                          } else {
+                            config.options.splice(index, 1);
+                          }
+                          optionChange();
+                        }}>删除</Button
+                      >
+                    </div>
+                  </AccordionItem>
+                {/each}
+              </Accordion>
+              <Button
+                color="primary"
+                size="sm"
+                on:click={() => {
+                  config.options.push({
+                    mark: String.fromCharCode(65 + config.options.length),
+                    name: "",
+                    cnt: 0,
+                  });
+                  optionChange();
+                }}>添加选项</Button
+              >
+            </Modal>
+          </div>
+          <Hr class="my-6" />
+          <div class="mb-6">
+            <Label for="opacity" class="mb-2">透明度</Label>
+            <Range
+              bind:value={style_config.opacity}
               on:change={cssChange}
+              min="0"
+              max="1"
+              step="0.01"
               size="sm"
-              id="font_size"
+              id="opacity"
             />
           </div>
-        </div>
-        <Toggle
-          bind:checked={style_config.text_stroke_enabled}
-          on:change={cssChange}
-          color="red"
-          size="small"
-          class="mb-6">描边效果</Toggle
-        >
-        <div class="flex mb-6">
-          <div>
-            <Label for="text_color">文字颜色</Label>
-            <input
-              type="color"
-              bind:value={style_config.text_color}
-              on:change={cssChange}
-              id="text_color"
-            />
+          <div class="mb-6">
+            {#if fontQuery && config.magic}
+              <Label for="font_family" class="mb-2">字体</Label>
+              <Select
+                bind:value={style_config.font_family}
+                on:change={cssChange}
+                items={localFonts}
+                class="mb-2"
+                style="width: 170px"
+                size="sm"
+                id="font_family"
+              />
+              <Button color="alternative" on:click={getFontList} size="sm"
+                >获取字体列表</Button
+              >
+            {:else}
+              <Label for="font_family" class="mb-2">字体</Label>
+              <Input
+                type="text"
+                bind:value={style_config.font_family}
+                on:change={cssChange}
+                size="sm"
+                id="font_family"
+              />
+            {/if}
           </div>
-          <div class="ml-10">
-            <Label for="text_stroke_color">描边颜色</Label>
-            <input
-              type="color"
-              bind:value={style_config.text_stroke_color}
-              on:change={cssChange}
-              id="text_stroke_color"
-            />
+          <div class="mb-6">
+            <Label class="mb-2" for="font_size">文字大小</Label>
+            <div class="flex items-center">
+              <Input
+                type="number"
+                bind:value={style_config.font_size}
+                on:change={cssChange}
+                size="sm"
+                id="font_size"
+              />
+            </div>
           </div>
-        </div>
-        <div class="flex mb-6">
-          <div>
-            <Label>选项主色</Label>
-            <input
-              type="color"
-              bind:value={style_config.main_color}
-              on:change={cssChange}
-            />
-          </div>
-          <div class="ml-10">
-            <Label>背景色</Label>
-            <input
-              type="color"
-              bind:value={style_config.bg_color}
-              on:change={cssChange}
-            />
-          </div>
-        </div>
-        <Input
-          id="copy_fake"
-          style="opacity: 0; position: absolute; z-index: -1;"
-          type="text"
-          bind:value={copy_text}
-        />
-        <ButtonGroup>
-          <Button color="primary" on:click={copyLink} size="sm">复制链接</Button
+          <Toggle
+            bind:checked={style_config.text_stroke_enabled}
+            on:change={cssChange}
+            color="red"
+            size="small"
+            class="mb-6">描边效果</Toggle
           >
-          <Button color="primary" on:click={copyCss} size="sm">复制 CSS</Button>
-        </ButtonGroup>
-      </div></Card
-    >
+          <div class="flex mb-6">
+            <div>
+              <Label for="text_color">文字颜色</Label>
+              <input
+                type="color"
+                bind:value={style_config.text_color}
+                on:change={cssChange}
+                id="text_color"
+              />
+            </div>
+            <div class="ml-10">
+              <Label for="text_stroke_color">描边颜色</Label>
+              <input
+                type="color"
+                bind:value={style_config.text_stroke_color}
+                on:change={cssChange}
+                id="text_stroke_color"
+              />
+            </div>
+          </div>
+          <div class="flex mb-6">
+            <div>
+              <Label>选项主色</Label>
+              <input
+                type="color"
+                bind:value={style_config.main_color}
+                on:change={cssChange}
+              />
+            </div>
+            <div class="ml-10">
+              <Label>背景色</Label>
+              <input
+                type="color"
+                bind:value={style_config.bg_color}
+                on:change={cssChange}
+              />
+            </div>
+          </div>
+          <Input
+            id="copy_fake"
+            style="opacity: 0; position: absolute; z-index: -1;"
+            type="text"
+            bind:value={copy_text}
+          />
+          <ButtonGroup>
+            <Button color="primary" on:click={copyLink} size="sm"
+              >复制链接</Button
+            >
+            <Button color="primary" on:click={copyCss} size="sm"
+              >复制 CSS</Button
+            >
+          </ButtonGroup>
+        </div></Card
+      >
+    {/if}
+  {:else}
+    <div class="flex items-center justify-center w-full">
+      <Alert>
+        <span class="font-medium">签名无效！</span>
+        请重新获取插件链接
+      </Alert>
+    </div>
   {/if}
 </main>
 
@@ -570,10 +627,6 @@
     color: var(--text-color, black);
     padding: 20px;
     width: 100%;
-  }
-
-  label {
-    margin-bottom: 6px;
   }
 
   .stroke span {

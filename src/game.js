@@ -11,6 +11,20 @@ class Game {
     this.user_code = user_code;
     this.handler = handler;
   }
+
+  static verify(caller, code, mid, timestamp, code_sign, handler) {
+    console.log("Verify params");
+    // GET /v2/app/verify
+    fetch(API + "/v2/app/verify?Caller=" + caller + "&Code=" + code + "&Mid=" + mid + "&Timestamp=" + timestamp + "&CodeSign=" + code_sign)
+      .then(response => response.json())
+      .then(data => {
+        handler(data.code);
+      })
+      .catch(error => {
+        console.error(error);
+      })
+  }
+
   startGame() {
     console.log("Game started");
     // GET /v2/app/start
