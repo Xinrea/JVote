@@ -365,17 +365,19 @@
       <!-- show options as visualized vote result -->
       {#each config.options as opt}
         <div class="option" class:winner={opt.cnt == winner_cnt}>
-          <span
-            class="option-bar"
-            style={"right: " +
-              ((total_vote - opt.cnt) / total_vote) * 100 +
-              "%"}
-          ></span>
-          <span
-            class="option-mark font-medium inline-flex items-center justify-center rounded border px-2.5 py-0.5"
-            >{opt.mark}</span
-          >
-          <span class="option-text">{opt.name}</span>
+          <span>
+            <span
+              class="option-bar"
+              style={"right: " +
+                ((total_vote - opt.cnt) / total_vote) * 100 +
+                "%"}
+            ></span>
+            <span
+              class="option-mark font-medium inline-flex items-center justify-center rounded border px-2.5 py-0.5"
+              >{opt.mark}</span
+            >
+            <span class="option-text">{opt.name}</span>
+          </span>
           {#if config.percent}
             <span class="option-cnt"
               >{opt.cnt} ({total_vote > 0
@@ -638,6 +640,9 @@
   }
 
   .option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     margin: 10px 10px 10px 10px;
     padding: 10px 10px 10px 10px;
     border: 1px solid gray;
@@ -664,7 +669,6 @@
 
   .option-cnt {
     margin-right: 10px;
-    float: right;
   }
 
   .option-mark {
