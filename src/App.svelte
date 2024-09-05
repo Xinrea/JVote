@@ -315,6 +315,14 @@
 
   function cssChange() {
     localStorage.setItem("style_config", JSON.stringify(style_config));
+    // Add this line to convert hex to RGB
+    document.documentElement.style.setProperty('--main-color-rgb', hexToRgb(style_config.main_color));
+  }
+
+  // Add this helper function to convert hex to RGB
+  function hexToRgb(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : null;
   }
 
   // render css
@@ -342,6 +350,8 @@
 
   let option_modal = false;
   let copy_text = "";
+
+  $: isCountdownLow = count_down > 0 && count_down <= 10;
 </script>
 
 <main
@@ -356,11 +366,19 @@
   {#if valid}
     <div class="main" class:stroke={style_config.text_stroke_enabled}>
       <!-- count down with progressbar -->
-      {#if count_down > 0}
-        <span class="count-down">剩余时间: {count_down}</span>
-      {:else}
-        <span class="count-down">投票已结束</span>
+      <span class="count-down" class:pulse={isCountdownLow}>
+        <span class="clock-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+        </span>
+        {#if count_down > 0}
+          剩余时间: {count_down}
+        {:else}
+          投票已结束
       {/if}
+     </span>
 
       <!-- show options as visualized vote result -->
       {#each config.options as opt}
@@ -633,25 +651,30 @@
 
   .stroke span {
     text-shadow:
+      var(--text-stroke-color, white) 1px 1px 0,
+      var(--text-stroke-color, white) -1px 1px 0,
+      var(--text-stroke-color, white) 1px -1px 0,
+      var(--text-stroke-color, white) -1px -1px 0,
       var(--text-stroke-color, white) 1px 0 0,
       var(--text-stroke-color, white) 0 1px 0,
-      var(--text-stroke-color, white) 0 -1px 0,
-      var(--text-stroke-color, white) -1px 0 0;
+      var(--text-stroke-color, white) -1px 0 0,
+      var(--text-stroke-color, white) 0 -1px 0;
   }
 
   .option {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin: 10px 10px 10px 10px;
-    padding: 10px 10px 10px 10px;
-    border: 1px solid gray;
-    border-radius: 3px;
+    margin: 12px 0;
+    padding: 12px 16px;
+    border: none;
+    border-radius: 8px;
     background-color: var(--bg-color, #ffffff);
     position: relative;
     z-index: 1;
     overflow: hidden;
-    transition: all 0.5s ease-in-out;
+    transition: all 0.3s ease-in-out;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   }
 
   .option-bar {
@@ -662,32 +685,89 @@
     bottom: 0;
     left: 0;
     right: 100%;
-    background-color: var(--main-color, #fc3171bf);
-    border-radius: 3px;
+    background-color: var(--main-color, rgba(252, 49, 113, 0.2));
+    border-radius: 8px;
     transition: right 0.5s ease-in-out;
   }
 
   .option-cnt {
     margin-right: 10px;
+    font-weight: 600;
   }
 
   .option-mark {
-    margin-right: 20px;
+    margin-right: 16px;
     color: var(--main-color, #fc3171) !important;
     border-color: var(--main-color, #fc3171) !important;
-    background-color: var(--bg-color, #fc3171) !important;
+    background-color: var(--bg-color, #ffffff) !important;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+
+  .option-text {
+    font-weight: 500;
   }
 
   .count-down {
-    margin: 10px;
+    display: inline-flex;
+    align-items: center;
+    margin: 10px 0 20px;
     font-weight: bold;
+    font-size: 1.2em;
+    color: var(--main-color, #fc3171);
+    text-shadow: 
+      -1px -1px 0 var(--bg-color, #ffffff),
+      1px -1px 0 var(--bg-color, #ffffff),
+      -1px 1px 0 var(--bg-color, #ffffff),
+      1px 1px 0 var(--bg-color, #ffffff);
+    padding: 8px 16px;
+    border-radius: 20px;
+    background-color: rgba(var(--main-color-rgb, 252, 49, 113), 0.1);
+    box-shadow: 0 2px 10px rgba(var(--main-color-rgb, 252, 49, 113), 0.2);
+    transition: all 0.3s ease;
+  }
+
+  .count-down .clock-icon {
+    margin-right: 10px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .count-down .clock-icon svg {
+    stroke: var(--main-color, #fc3171);
+    width: 24px;
+    height: 24px;
+    vertical-align: middle;
+  }
+
+  .count-down:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(var(--main-color-rgb, 252, 49, 113), 0.3);
+  }
+
+  @keyframes pulse {
+    0% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.05);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  .pulse {
+    animation: pulse 1s infinite;
+    color: #ff0000; /* Change color to red when pulsing */
   }
 
   .winner {
     transform-origin: left;
     scale: 1.02;
-    border: 1px solid white;
-    box-shadow: 0 0 5px 2px var(--main-color, #fc3171);
+    border: none;
+    box-shadow: 0 4px 8px rgba(var(--main-color-rgb, 252, 49, 113), 0.3);
   }
 
   input[type="color"] {
