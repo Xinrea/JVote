@@ -1,22 +1,18 @@
 <script>
   import {
     Button,
-    Badge,
     Label,
     Toggle,
     Input,
     Range,
     Select,
     A,
-    Hr,
     ButtonGroup,
-    Card,
     Modal,
-    Accordion,
-    AccordionItem,
     Alert,
-    Textarea,
   } from "flowbite-svelte";
+  import Icon from "./components/Icon.svelte";
+  import OptionsEditor from "./components/OptionsEditor.svelte";
 
   // parse params from url
   const urlParams = new URLSearchParams(window.location.search);
@@ -66,6 +62,7 @@
 
   // get marks from url params mark[]
   const marks = urlParams.getAll("mark[]");
+  const optionsExplicitlyEmpty = urlParams.get("empty_options") === "true";
   // get options from url params opt[]
   config.options = urlParams.getAll("opt[]").map((opt, index) => {
     return {
@@ -89,6 +86,9 @@
       link += `&mark[]=${encodeURIComponent(opt.mark)}`;
       link += `&opt[]=${encodeURIComponent(opt.name)}`;
     });
+    if (config.options.length === 0) {
+      link += "&empty_options=true";
+    }
     link += `&time=${config.time}`;
     link += `&percent=${config.percent}`;
     // add Code, Caller, Mid, Timestamp, CodeSign
@@ -131,7 +131,7 @@
   let g = null;
   if (plug_env === "0") {
     g = new Game(config.user_code, handler);
-    if (config.options.length === 0) {
+    if (config.options.length === 0 && !optionsExplicitlyEmpty) {
       config.options = [
         {
           mark: "A",
@@ -155,6 +155,7 @@
     // load config from local db
     const prev_code = config.user_code;
     let localConfig = JSON.parse(localStorage.getItem("config"));
+    const hasSavedOptions = Array.isArray(localConfig?.options);
     if (localConfig) {
       console.log("load config from local");
       config.percent = localConfig.percent;
@@ -165,7 +166,10 @@
     if (prev_code !== "") {
       config.user_code = prev_code;
     }
-    if (localConfig && localConfig.options.length > 0) {
+    if (
+      Array.isArray(localConfig?.options) &&
+      (localConfig.options.length > 0 || hasSavedOptions || optionsExplicitlyEmpty)
+    ) {
       console.log("load options from local");
       // doesn't need to use old cnt
       config.options = localConfig.options.map(
@@ -306,11 +310,14 @@
 
   function optionChange() {
     configChange();
-    winner_cnt = config.options.reduce((prev, curr) =>
-      prev.cnt > curr.cnt ? prev : curr
-    ).cnt;
+    winner_cnt = config.options.reduce((max, option) => Math.max(max, option.cnt), 0);
     total_vote = config.options.reduce((prev, curr) => prev + curr.cnt, 0);
     config.options = [...config.options];
+  }
+
+  function updateOptions(event) {
+    config.options = event.detail.options;
+    optionChange();
   }
 
   function cssChange() {
@@ -349,12 +356,14 @@
   }
 
   let option_modal = false;
+  let options_editor;
   let copy_text = "";
 
   $: isCountdownLow = count_down > 0 && count_down <= 10;
 </script>
 
 <main
+  class:configuration={plug_env === "1"}
   style:--opacity={style_config.opacity}
   style:--font-size={style_config.font_size + "px"}
   style:--font-family={style_config.font_family}
@@ -364,292 +373,216 @@
   style:--text-stroke-color={style_config.text_stroke_color}
 >
   {#if valid}
-    <div class="main" class:stroke={style_config.text_stroke_enabled}>
-      <!-- count down with progressbar -->
-      <span class="count-down" class:pulse={isCountdownLow}>
-        <span class="clock-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <polyline points="12 6 12 12 16 14"></polyline>
-          </svg>
-        </span>
-        {#if count_down > 0}
-          剩余时间: {count_down}
-        {:else}
-          投票已结束
+    <section class="preview-region" aria-label="投票展示">
+      {#if plug_env === "1"}
+        <div class="preview-heading">
+          <div class="preview-title"><Icon name="monitor" size={17} /><h1>效果预览</h1></div>
+          <span class="preview-badge"><span></span>模拟计票</span>
+        </div>
       {/if}
-     </span>
 
-      <!-- show options as visualized vote result -->
-      {#each config.options as opt}
-        <div class="option" class:winner={opt.cnt == winner_cnt}>
-          <span>
-            <span
-              class="option-bar"
-              style={"right: " +
-                ((total_vote - opt.cnt) / total_vote) * 100 +
-                "%"}
-            ></span>
-            <span
-              class="option-mark font-medium inline-flex items-center justify-center rounded border px-2.5 py-0.5"
-              >{opt.mark}</span
-            >
-            <span class="option-text">{opt.name}</span>
-          </span>
-          {#if config.percent}
-            <span class="option-cnt"
-              >{opt.cnt} ({total_vote > 0
-                ? ((opt.cnt / total_vote) * 100).toFixed(2) + "%"
-                : "0%"})</span
-            >
+      <div class="main" class:stroke={style_config.text_stroke_enabled}>
+        <span class="count-down" class:pulse={isCountdownLow}>
+          <span class="clock-icon"><Icon name="clock" size={19} /></span>
+          {#if count_down > 0}
+            剩余时间：<span class="countdown-value">{count_down}</span><span class="countdown-unit">秒</span>
           {:else}
-            <span class="option-cnt">{opt.cnt}</span>
+            投票已结束
           {/if}
-        </div>
-      {/each}
-    </div>
-    {#if plug_env === "1"}
-      <Card class="ml-8 panel">
-        {#if config.magic}
-          <div class="mb-6" class:panel={0}>
-            *前往<A href="https://play-live.bilibili.com/" target="_blank"
-              >互动玩法</A
-            >页面右下角获取身份码
-          </div>
-          <div class="mb-6">
-            <Label for="user_code" class="mb-2">身份码</Label>
-            <Input
-              type="text"
-              size="sm"
-              bind:value={config.user_code}
-              on:change={configChange}
-              id="user_code"
-            />
-          </div>
-        {/if}
-        <div class="mb-6">
-          <Label for="counter" class="mb-2">计票时长</Label>
-          <Input
-            type="number"
-            bind:value={config.time}
-            on:change={configChange}
-            size="sm"
-            id="counter"
-          />
-        </div>
-        <div class="mb-6">
-          <Label for="percent" class="mb-2">显示投票百分比</Label>
-          <Toggle
-            bind:checked={config.percent}
-            on:change={configChange}
-            color="red"
-            size="small"
-            class="mb-6"
-          />
-          <div>
-            <Button
-              color="alternative"
-              size="sm"
-              on:click={() => {
-                option_modal = true;
-              }}>投票选项编辑</Button
-            >
-            <Modal title="投票选项编辑" bind:open={option_modal}>
-              <Alert color="yellow"
-                >请注意，如果弹幕能够触发多个选项，则实际只会触发顺序靠前的第一个选项。</Alert
-              >
-              <Accordion>
-                {#each config.options as opt, index}
-                  <AccordionItem>
-                    <span slot="header">{"[" + opt.mark + "]" + opt.name}</span>
-                    <div>
-                      <Label for="option_mark" class="mb-2">选项标记</Label>
-                      <Input
-                        type="text"
-                        bind:value={config.options[index].mark}
-                        size="sm"
-                        id="option_mark"
-                        class="mb-2"
-                      />
-                      <Label for="option_name" class="mb-2">选项内容</Label>
-                      <Input
-                        type="text"
-                        bind:value={config.options[index].name}
-                        size="sm"
-                        id="option_name"
-                      />
-                      <Button
-                        color="red"
-                        size="sm"
-                        class="mt-2"
-                        on:click={() => {
-                          if (config.options.length <= 1) {
-                            config.options = [];
-                          } else {
-                            config.options.splice(index, 1);
-                          }
-                          optionChange();
-                        }}>删除</Button
-                      >
-                    </div>
-                  </AccordionItem>
-                {/each}
-              </Accordion>
-              <Button
-                color="primary"
-                size="sm"
-                on:click={() => {
-                  config.options.push({
-                    mark: String.fromCharCode(65 + config.options.length),
-                    name: "",
-                    cnt: 0,
-                  });
-                  optionChange();
-                }}>添加选项</Button
-              >
-            </Modal>
-          </div>
-          <Hr class="my-6" />
-          <div class="mb-6">
-            <Label for="opacity" class="mb-2">透明度</Label>
-            <Range
-              bind:value={style_config.opacity}
-              on:change={cssChange}
-              min="0"
-              max="1"
-              step="0.01"
-              size="sm"
-              id="opacity"
-            />
-          </div>
-          <div class="mb-6">
-            {#if fontQuery && config.magic}
-              <Label for="font_family" class="mb-2">字体</Label>
-              <Select
-                bind:value={style_config.font_family}
-                on:change={cssChange}
-                items={localFonts}
-                class="mb-2"
-                style="width: 170px"
-                size="sm"
-                id="font_family"
-              />
-              <Button color="alternative" on:click={getFontList} size="sm"
-                >获取字体列表</Button
-              >
+        </span>
+
+        {#each config.options as opt}
+          <div class="option" class:winner={winner_cnt > 0 && opt.cnt === winner_cnt}>
+            <span class="option-bar" style:right={total_vote > 0 ? ((total_vote - opt.cnt) / total_vote) * 100 + "%" : "100%"}></span>
+            <span class="option-label">
+              <span class="option-mark">{opt.mark}</span>
+              <span class="option-text">{opt.name}</span>
+            </span>
+            {#if config.percent}
+              <span class="option-cnt">{opt.cnt} <span class="option-percent">({total_vote > 0 ? ((opt.cnt / total_vote) * 100).toFixed(2) + "%" : "0%"})</span></span>
             {:else}
-              <Label for="font_family" class="mb-2">字体</Label>
-              <Input
-                type="text"
-                bind:value={style_config.font_family}
-                on:change={cssChange}
-                size="sm"
-                id="font_family"
-              />
+              <span class="option-cnt">{opt.cnt}</span>
             {/if}
           </div>
-          <div class="mb-6">
-            <Label class="mb-2" for="font_size">文字大小</Label>
-            <div class="flex items-center">
-              <Input
-                type="number"
-                bind:value={style_config.font_size}
-                on:change={cssChange}
-                size="sm"
-                id="font_size"
-              />
+        {/each}
+      </div>
+
+      {#if plug_env === "1"}
+        <p class="preview-hint"><Icon name="info" size={14} />此处为模拟预览，正式计票在 OBS 浏览器源中进行。</p>
+      {/if}
+    </section>
+
+    {#if plug_env === "1"}
+      <aside class="settings-panel" aria-label="投票配置">
+        <div class="settings-heading">
+          <div><span class="settings-icon"><Icon name="sliders" size={18} /></span><h2>投票配置</h2></div>
+          <p>调整设置，即时预览展示效果</p>
+        </div>
+
+        <div class="settings-scroll">
+          {#if config.magic}
+            <div class="settings-section identity-section">
+              <div class="field">
+                <Label for="user_code">主播身份码</Label>
+                <Input type="text" size="sm" bind:value={config.user_code} on:change={configChange} id="user_code" placeholder="填写主播身份码" />
+                <p class="field-help">前往<A href="https://play-live.bilibili.com/" target="_blank" rel="noreferrer">互动玩法</A>页面右下角获取身份码</p>
+              </div>
+            </div>
+          {/if}
+
+          <div class="settings-section">
+            <div class="section-heading"><span>计票设置</span></div>
+            <div class="field">
+              <Label for="counter">计票时长<span class="label-unit">秒</span></Label>
+              <Input type="number" bind:value={config.time} on:change={configChange} size="sm" id="counter" />
+            </div>
+            <div class="toggle-field">
+              <Toggle bind:checked={config.percent} on:change={configChange} color="primary" size="small" id="percent">显示投票百分比</Toggle>
+            </div>
+            <Button color="alternative" size="sm" class="edit-options-button" on:click={() => (option_modal = true)}><Icon name="sliders" size={16} />投票选项编辑<Icon name="chevron" size={15} /></Button>
+          </div>
+
+          <div class="settings-section">
+            <div class="section-heading"><span>显示样式</span></div>
+            <div class="field">
+              <Label for="opacity">透明度<span class="range-value">{Math.round(style_config.opacity * 100)}%</span></Label>
+              <Range bind:value={style_config.opacity} on:change={cssChange} min="0" max="1" step="0.01" size="sm" id="opacity" />
+            </div>
+            <div class="field">
+              <Label for="font_family">字体</Label>
+              {#if fontQuery && config.magic}
+                <div class="font-controls">
+                  <Select bind:value={style_config.font_family} on:change={cssChange} items={localFonts} size="sm" id="font_family" />
+                  <Button color="alternative" on:click={getFontList} size="sm">获取字体列表</Button>
+                </div>
+              {:else}
+                <Input type="text" bind:value={style_config.font_family} on:change={cssChange} size="sm" id="font_family" />
+              {/if}
+            </div>
+            <div class="field">
+              <Label for="font_size">文字大小<span class="label-unit">px</span></Label>
+              <Input type="number" bind:value={style_config.font_size} on:change={cssChange} size="sm" id="font_size" />
+            </div>
+            <div class="toggle-field">
+              <Toggle bind:checked={style_config.text_stroke_enabled} on:change={cssChange} color="primary" size="small">描边效果</Toggle>
+            </div>
+            <div class="color-grid">
+              <div class="color-field"><Label for="text_color">文字颜色</Label><input type="color" bind:value={style_config.text_color} on:change={cssChange} id="text_color" /></div>
+              <div class="color-field"><Label for="text_stroke_color">描边颜色</Label><input type="color" bind:value={style_config.text_stroke_color} on:change={cssChange} id="text_stroke_color" /></div>
+              <div class="color-field"><Label for="main_color">选项主色</Label><input type="color" bind:value={style_config.main_color} on:change={cssChange} id="main_color" /></div>
+              <div class="color-field"><Label for="bg_color">背景颜色</Label><input type="color" bind:value={style_config.bg_color} on:change={cssChange} id="bg_color" /></div>
             </div>
           </div>
-          <Toggle
-            bind:checked={style_config.text_stroke_enabled}
-            on:change={cssChange}
-            color="red"
-            size="small"
-            class="mb-6">描边效果</Toggle
-          >
-          <div class="flex mb-6">
-            <div>
-              <Label for="text_color">文字颜色</Label>
-              <input
-                type="color"
-                bind:value={style_config.text_color}
-                on:change={cssChange}
-                id="text_color"
-              />
-            </div>
-            <div class="ml-10">
-              <Label for="text_stroke_color">描边颜色</Label>
-              <input
-                type="color"
-                bind:value={style_config.text_stroke_color}
-                on:change={cssChange}
-                id="text_stroke_color"
-              />
-            </div>
-          </div>
-          <div class="flex mb-6">
-            <div>
-              <Label>选项主色</Label>
-              <input
-                type="color"
-                bind:value={style_config.main_color}
-                on:change={cssChange}
-              />
-            </div>
-            <div class="ml-10">
-              <Label>背景色</Label>
-              <input
-                type="color"
-                bind:value={style_config.bg_color}
-                on:change={cssChange}
-              />
-            </div>
-          </div>
-          <Input
-            id="copy_fake"
-            style="opacity: 0; position: absolute; z-index: -1;"
-            type="text"
-            bind:value={copy_text}
-          />
-          <ButtonGroup>
-            <Button color="primary" on:click={copyLink} size="sm"
-              >复制链接</Button
-            >
-            <Button color="primary" on:click={copyCss} size="sm"
-              >复制 CSS</Button
-            >
+        </div>
+
+        <div class="settings-footer">
+          <Input id="copy_fake" style="opacity: 0; position: absolute; z-index: -1;" type="text" bind:value={copy_text} tabindex="-1" aria-hidden="true" />
+          <ButtonGroup class="copy-actions">
+            <Button color="primary" on:click={copyLink} size="sm"><Icon name="link" size={16} />复制链接</Button>
+            <Button color="alternative" on:click={copyCss} size="sm"><Icon name="copy" size={16} />复制 CSS</Button>
           </ButtonGroup>
-        </div></Card
+          <p>用于 OBS 浏览器源的链接与自定义样式</p>
+        </div>
+      </aside>
+
+      <Modal
+        title="投票选项编辑"
+        size="lg"
+        bind:open={option_modal}
+        class="options-modal"
+        classHeader="options-modal-header"
+        classBody="options-modal-body"
+        footerClass="flex items-center options-modal-footer"
       >
+        <OptionsEditor bind:this={options_editor} options={config.options} on:change={updateOptions} />
+        <svelte:fragment slot="footer">
+          <Button color="alternative" size="sm" class="add-option-button" on:click={() => options_editor.addOption()}><Icon name="plus" size={16} />添加选项</Button>
+          <span class="options-save-hint"><Icon name="check" size={14} />修改即时生效并保存在本机</span>
+          <Button color="primary" size="sm" class="finish-options-button" on:click={() => (option_modal = false)}>完成</Button>
+        </svelte:fragment>
+      </Modal>
     {/if}
   {:else}
-    <div class="flex items-center justify-center w-full">
-      <Alert>
-        <span class="font-medium">签名无效！</span>
-        请重新获取插件链接
-      </Alert>
-    </div>
+    <div class="invalid-link"><Alert><span class="font-medium">签名无效！</span> 请重新获取插件链接</Alert></div>
   {/if}
 </main>
 
 <style>
   main {
-    padding: 1em;
-    margin: 0 auto;
     display: flex;
-    flex-direction: row;
+    align-items: flex-start;
+    gap: 24px;
+    margin: 0 auto;
+    padding: 16px;
+  }
+
+  main.configuration {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 360px;
+    padding: 20px;
+  }
+
+  .preview-region {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .configuration .preview-region {
+    padding: 14px 8px;
+  }
+
+  .preview-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 29px;
+  }
+
+  .preview-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #818895;
+  }
+
+  .preview-title h1 {
+    margin: 0;
+    color: #505867;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .preview-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    border: 1px solid #eceef2;
+    border-radius: 5px;
+    color: #9399a4;
+    background: #fafbfc;
+    font-size: 11px;
+  }
+
+  .preview-badge > span {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #b0b5bf;
   }
 
   .main {
+    width: 100%;
     opacity: var(--opacity, 1);
     font-family: var(--font-family, Arial);
     font-size: var(--font-size, 16px);
     color: var(--text-color, black);
-    padding: 20px;
-    width: 100%;
   }
 
-  .stroke span {
+  .stroke .option-label,
+  .stroke .option-cnt {
     text-shadow:
       var(--text-stroke-color, white) 1px 1px 0,
       var(--text-stroke-color, white) -1px 1px 0,
@@ -661,116 +594,178 @@
       var(--text-stroke-color, white) 0 -1px 0;
   }
 
+  .count-down {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 13px;
+    margin-bottom: 18px;
+    border: 1px solid color-mix(in srgb, var(--main-color, #fc3171) 15%, transparent);
+    border-radius: 9px;
+    color: var(--main-color, #fc3171);
+    background: color-mix(in srgb, var(--main-color, #fc3171) 6%, var(--bg-color, #fff));
+    font-size: 0.9em;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  .clock-icon {
+    display: flex;
+    align-items: center;
+    margin-right: 3px;
+  }
+
+  .countdown-value {
+    font-variant-numeric: tabular-nums;
+    font-size: 1.1em;
+  }
+
+  .countdown-unit {
+    margin-left: -2px;
+    font-size: 0.85em;
+    font-weight: 400;
+  }
+
   .option {
+    position: relative;
+    z-index: 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin: 12px 0;
-    padding: 12px 16px;
-    border: none;
-    border-radius: 8px;
-    background-color: var(--bg-color, #ffffff);
-    position: relative;
-    z-index: 1;
+    gap: 16px;
     overflow: hidden;
-    transition: all 0.3s ease-in-out;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    padding: 15px 17px;
+    margin-bottom: 12px;
+    border: 1px solid color-mix(in srgb, var(--text-color, #000) 13%, var(--bg-color, #fff));
+    border-radius: 9px;
+    background: var(--bg-color, #fff);
+    box-shadow: 0 2px 5px #1d273b05;
+    transition: border-color 250ms, box-shadow 250ms;
   }
 
   .option-bar {
-    content: "";
     position: absolute;
     z-index: -1;
     top: 0;
     bottom: 0;
     left: 0;
     right: 100%;
-    background-color: var(--main-color, rgba(252, 49, 113, 0.2));
-    border-radius: 8px;
-    transition: right 0.5s ease-in-out;
+    background: color-mix(in srgb, var(--main-color, #fc3171) 16%, transparent);
+    transition: right 500ms ease;
   }
 
-  .option-cnt {
-    margin-right: 10px;
-    font-weight: 600;
+  .option-label {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
   }
 
   .option-mark {
-    margin-right: 16px;
-    color: var(--main-color, #fc3171) !important;
-    border-color: var(--main-color, #fc3171) !important;
-    background-color: var(--bg-color, #ffffff) !important;
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    min-width: 33px;
+    min-height: 33px;
+    max-width: 35%;
+    padding: 4px 9px;
+    border: 1px solid color-mix(in srgb, var(--main-color, #fc3171) 30%, var(--bg-color, #fff));
+    border-radius: 6px;
+    color: var(--main-color, #fc3171);
+    background: var(--bg-color, #fff);
     font-weight: 600;
-    padding: 4px 8px;
-    border-radius: 4px;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
   }
 
   .option-text {
+    min-width: 0;
     font-weight: 500;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
   }
 
-  .count-down {
-    display: inline-flex;
-    align-items: center;
-    margin: 10px 0 20px;
-    font-weight: bold;
-    font-size: 1.2em;
-    color: var(--main-color, #fc3171);
-    text-shadow: 
-      -1px -1px 0 var(--bg-color, #ffffff),
-      1px -1px 0 var(--bg-color, #ffffff),
-      -1px 1px 0 var(--bg-color, #ffffff),
-      1px 1px 0 var(--bg-color, #ffffff);
-    padding: 8px 16px;
-    border-radius: 20px;
-    background-color: rgba(var(--main-color-rgb, 252, 49, 113), 0.1);
-    box-shadow: 0 2px 10px rgba(var(--main-color-rgb, 252, 49, 113), 0.2);
-    transition: all 0.3s ease;
+  .option-cnt {
+    flex-shrink: 0;
+    white-space: nowrap;
+    font-size: 0.9em;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
   }
 
-  .count-down .clock-icon {
-    margin-right: 10px;
-    display: inline-flex;
-    align-items: center;
-  }
-
-  .count-down .clock-icon svg {
-    stroke: var(--main-color, #fc3171);
-    width: 24px;
-    height: 24px;
-    vertical-align: middle;
-  }
-
-  .count-down:hover {
-    transform: scale(1.05);
-    box-shadow: 0 4px 15px rgba(var(--main-color-rgb, 252, 49, 113), 0.3);
-  }
-
-  @keyframes pulse {
-    0% {
-      transform: scale(1);
-    }
-    50% {
-      transform: scale(1.05);
-    }
-    100% {
-      transform: scale(1);
-    }
-  }
-
-  .pulse {
-    animation: pulse 1s infinite;
-    color: #ff0000; /* Change color to red when pulsing */
+  .option-percent {
+    font-size: 0.85em;
+    font-weight: 400;
   }
 
   .winner {
-    transform-origin: left;
-    scale: 1.02;
-    border: none;
-    box-shadow: 0 4px 8px rgba(var(--main-color-rgb, 252, 49, 113), 0.3);
+    border-color: color-mix(in srgb, var(--main-color, #fc3171) 55%, var(--bg-color, #fff));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--main-color, #fc3171) 7%, transparent);
   }
 
-  input[type="color"] {
-    width: 32px;
+  .pulse {
+    animation: countdown-pulse 1.5s ease-in-out infinite;
+  }
+
+  .preview-hint {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 21px 0 0;
+    color: #929aa5;
+    font-size: 11px;
+    line-height: 1.7;
+  }
+
+  .preview-hint :global(svg) {
+    margin-top: 2px;
+    flex-shrink: 0;
+  }
+
+  .invalid-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+  }
+
+  @keyframes countdown-pulse {
+    50% { opacity: 0.6; }
+  }
+
+  @media (max-width: 1000px) {
+    main { gap: 20px; }
+    main.configuration { padding: 16px; }
+    .configuration .preview-region { padding: 12px 2px; }
+    .option { gap: 10px; padding: 13px 14px; }
+    .option-label { gap: 10px; }
+  }
+
+  @media (max-width: 760px) {
+    main.configuration {
+      flex-direction: column;
+      gap: 24px;
+      height: auto;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    .configuration .preview-region {
+      flex: none;
+      width: 100%;
+      padding: 5px 0 0;
+    }
+
+    .preview-heading { margin-bottom: 20px; }
+    .option { gap: 8px; padding: 12px; }
+    .option-label { gap: 9px; }
+    .option-mark { min-width: 30px; min-height: 30px; padding: 3px 7px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pulse { animation: none; }
+    .option, .option-bar { transition: none; }
   }
 </style>
