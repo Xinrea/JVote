@@ -1,47 +1,84 @@
-# Svelte + Vite
+<p align="center">
+  <img src="./public/logo.svg" alt="JVote logo" width="128" height="128" />
+</p>
 
-This template should help get you started developing with Svelte in Vite.
+<h1 align="center">JVote</h1>
 
-## Recommended IDE Setup
+<p align="center">让每条弹幕成为一票。</p>
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
+JVote 是面向哔哩哔哩直播的弹幕投票工具。主播设置选项与计票时长，观众发送包含选项标记的弹幕参与投票，结果通过 OBS 浏览器源叠加到直播画面。
 
-## Need an official Svelte framework?
+## 功能
 
-Check out [SvelteKit](https://github.com/sveltejs/kit#readme), which is also powered by Vite. Deploy anywhere with its serverless-first approach and adapt to various platforms, with out of the box support for TypeScript, SCSS, and Less, and easily-added support for mdsvex, GraphQL, PostCSS, Tailwind CSS, and more.
+- **自定义投票**：添加、编辑或删除选项，设置选项标记、内容与计票时长。
+- **实时统计**：展示票数、进度条与领先选项，可选显示投票百分比。
+- **限时计票**：默认 30 秒倒计时，结束后显示“投票已结束”。
+- **观众去重**：真实弹幕模式下，同一观众每轮最多计入一票。
+- **样式调整**：配置透明度、字体、字号、主色、背景色与文字描边，导出 OBS 自定义 CSS。
+- **本地保存**：样式、计票时长与百分比显示设置保存在当前浏览器的 `localStorage` 中。
 
-## Technical considerations
+## 本地开发
 
-**Why use this over SvelteKit?**
+准备 Node.js 20+ 与 npm，在项目目录运行：
 
-- It brings its own routing solution which might not be preferable for some users.
-- It is first and foremost a framework that just happens to use Vite under the hood, not a Vite app.
-
-This template contains as little as possible to get started with Vite + Svelte, while taking into account the developer experience with regards to HMR and intellisense. It demonstrates capabilities on par with the other `create-vite` templates and is a good starting point for beginners dipping their toes into a Vite + Svelte project.
-
-Should you later need the extended capabilities and extensibility provided by SvelteKit, the template has been structured similarly to SvelteKit so that it is easy to migrate.
-
-**Why `global.d.ts` instead of `compilerOptions.types` inside `jsconfig.json` or `tsconfig.json`?**
-
-Setting `compilerOptions.types` shuts out all other types not explicitly listed in the configuration. Using triple-slash references keeps the default TypeScript setting of accepting type information from the entire workspace, while also adding `svelte` and `vite/client` type information.
-
-**Why include `.vscode/extensions.json`?**
-
-Other templates indirectly recommend extensions via the README, but this file allows VS Code to prompt the user to install the recommended extension upon opening the project.
-
-**Why enable `checkJs` in the JS template?**
-
-It is likely that most cases of changing variable types in runtime are likely to be accidental, rather than deliberate. This provides advanced typechecking out of the box. Should you like to take advantage of the dynamically-typed nature of JavaScript, it is trivial to change the configuration.
-
-**Why is HMR not preserving my local component state?**
-
-HMR state preservation comes with a number of gotchas! It has been disabled by default in both `svelte-hmr` and `@sveltejs/vite-plugin-svelte` due to its often surprising behavior. You can read the details [here](https://github.com/sveltejs/svelte-hmr/tree/master/packages/svelte-hmr#preservation-of-local-state).
-
-If you have state that's important to retain within a component, consider creating an external store which would not be replaced by HMR.
-
-```js
-// store.js
-// An extremely simple external store
-import { writable } from 'svelte/store'
-export default writable(0)
+```bash
+npm ci
+npm run dev
 ```
+
+打开 Vite 输出的本地地址，并加上 `?magic=true`，例如：
+
+```text
+http://localhost:5173/?magic=true
+```
+
+此入口用于配置面板与样式预览，票数由随机模拟数据生成，不连接真实直播弹幕。`magic=true` 会跳过页面链接签名校验并显示身份码输入框，但不会替代直播服务所需的授权。
+
+### 构建与预览
+
+```bash
+npm run build
+npm run preview
+```
+
+构建产物位于 `dist/`，可部署到静态站点服务。真实弹幕流程应通过构建产物验证：构建配置会注入弹幕 WebSocket 客户端脚本，开发服务器不会注入该脚本。
+
+## 在 OBS 中使用
+
+真实投票需要有效的主播身份码、带签名参数的插件链接，以及可用的互动服务。仓库只包含前端，互动服务地址配置在 [`src/game.js`](./src/game.js) 中。
+
+1. **进入配置页**：使用平台生成的有效插件链接。需要手动填写身份码时，可前往[哔哩哔哩互动玩法](https://play-live.bilibili.com/)页面获取。
+2. **设置投票**：点击“投票选项编辑”，填写选项标记与内容；设置计票时长及是否显示百分比。配置页中的票数仅为模拟预览。
+3. **调整样式**：设置字体、颜色、透明度等，点击“复制 CSS”保存展示样式。
+4. **添加浏览器源**：点击“复制链接”，在 OBS 中添加浏览器源并粘贴链接，再将复制的 CSS 粘贴到该源的“自定义 CSS”中。
+5. **开始投票**：浏览器源加载后立即开始倒计时，观众发送选项标记参与投票。刷新浏览器源会清空本轮票数并重新开始。
+
+复制的链接使用 `plug_env=0`，仅显示投票结果，不显示配置面板。链接传递投票选项与时长，展示样式则通过 CSS 单独传递。
+
+本地 `?magic=true` 预览地址不是有效的正式投票链接：复制链接时不会保留 `magic` 参数。若页面提示“签名无效！”，请重新获取带有效签名的插件链接。
+
+## 计票规则
+
+- 只处理直播开放平台的弹幕事件 `LIVE_OPEN_PLATFORM_DM`。
+- 弹幕**包含**选项标记即可命中，匹配区分大小写。例如标记为 `A` 时，`A` 和 `我选 A` 都会被计入。
+- 一条弹幕命中多个选项时，只计入配置顺序靠前的第一个选项；建议使用不易互相包含的标记。
+- 按观众的 `open_id` 去重，只计入该观众本轮的第一条有效投票弹幕。
+
+## 技术栈与目录
+
+基于 **Svelte 4 + Vite 5**，使用 **Tailwind CSS** 与 **Flowbite Svelte** 构建界面。
+
+```text
+public/
+  logo.svg                  # 项目 logo，同时用作浏览器图标
+  danmaku-websocket.min.js   # 弹幕 WebSocket 客户端
+src/
+  App.svelte                # 配置面板、计票逻辑与结果展示
+  game.js                   # 签名校验、互动会话与弹幕连接
+  app.css                   # 全局样式
+vite.config.js              # 构建配置与客户端脚本注入
+```
+
+## Logo
+
+[查看 SVG logo](./public/logo.svg)。设计沿用界面的粉色主色 `#fc3171`，将弹幕气泡、字母 **J** 与统计柱组合，表达“由弹幕汇聚投票”的主题。SVG 无外部字体或图片依赖，可缩放用于 README、浏览器图标或直播素材。
