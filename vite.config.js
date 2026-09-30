@@ -3,6 +3,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  base: './',
   plugins: [svelte(),    {
     name: 'add-script',
     apply: 'build',
@@ -11,7 +12,7 @@ export default defineConfig({
       handler(html) {
         return html.replace(
           '</title>',
-          '</title>\n    <script type="module" src="/danmaku-websocket.min.js"></script>'
+          '</title>\n    <script type="module" src="./danmaku-websocket.min.js"></script>'
         );
       },
     },
